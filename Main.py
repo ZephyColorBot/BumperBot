@@ -5,7 +5,7 @@ from discord import app_commands
 from datetime import datetime
 
 class BumpData:
-    def __init__(self, channelId, followUp, totalBumpCount):
+    def __init__(self, channelId, followUp, totalBumpCount, bumpInterval):
         self.channelId = channelId
         self.followUp = followUp
 
@@ -13,8 +13,7 @@ class BumpData:
         self.totalBumpCount = totalBumpCount
         self.bumpStartTime = datetime.now()
 
-        self.bumpInterval = 60 * 60 * 1 # 1 hour
-        # self.bumpInterval = 10 # 10 seconds
+        self.bumpInterval = bumpInterval * 60
 
     async def Bump(self):
         await self.followUp.send("Bump!")
@@ -57,10 +56,13 @@ async def send_periodic_message():
         del followUpList[channelId]
 
 @client.tree.command(name = 'bump', description = "Bumps your post every hour.")
-@app_commands.describe(bumpcount = "The number of times your post is bumped. Default is 8. Maximum is 24.")
+@app_commands.describe(
+    bumpcount = "The number of times your post is bumped. Default is 8. Maximum is 24.",
+    bumpinterval = "The interval in minutes between each bump. Default is 1 hour."
+)
 @app_commands.allowed_installs(guilds = False, users = True)
 @app_commands.allowed_contexts(guilds = True, dms = False, private_channels = False)
-async def registerPostBump(interaction, bumpcount: int = None):
+async def registerPostBump(interaction, bumpcount: str = None, bumpinterval: str = None):
     if interaction.channel_id in followUpList:
         await interaction.response.send_message(f"This channel is already being bumped.", ephemeral=True)
         return
@@ -81,13 +83,30 @@ async def registerPostBump(interaction, bumpcount: int = None):
         await interaction.response.send_message(f"Bump count must be at most 24.", ephemeral=True)
         return
 
+    if bumpinterval is None:
+        bumpinterval = 60
+    else:
+        try:
+            bumpinterval = float(bumpinterval)
+        except:
+            await interaction.response.send_message(f"Invalid bump interval.", ephemeral=True)
+            return
+
+    if bumpinterval < 1:
+        await interaction.response.send_message(f"Bump interval must be at least 1 minute.", ephemeral=True)
+        return
+    if bumpinterval > 120:
+        await interaction.response.send_message(f"Bump interval must be at most 120 minutes.", ephemeral=True)
+        return
+
     await interaction.response.defer()
 
     followUp = interaction.followup
     followUpList[interaction.channel_id] = BumpData(
         channelId = interaction.channel_id,
         followUp = followUp,
-        totalBumpCount = bumpcount
+        totalBumpCount = bumpcount,
+        bumpInterval = bumpinterval
     )
     await followUp.send("Starting bumping!")
 
@@ -95,8 +114,8 @@ async def registerPostBump(interaction, bumpcount: int = None):
 @app_commands.describe(bumpcount="The number of times your post is bumped. Default is 8. Maximum is 24.")
 @app_commands.allowed_installs(guilds=False, users=True)
 @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-async def registerPostBumpy(interaction, bumpcount: int = None):
-    await registerPostBump.callback(interaction, bumpcount)
+async def registerPostBumpy(interaction, bumpcount: str = None, bumpinterval: str = None):
+    await registerPostBump.callback(interaction, bumpcount, bumpinterval)
 
 with open('BotToken') as file:
     client.run(file.read().strip())
