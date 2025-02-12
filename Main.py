@@ -1,8 +1,9 @@
 import discord
+import datetime
+import time
 
 from discord.ext import commands, tasks
 from discord import app_commands
-from datetime import datetime
 
 class BumpData:
     def __init__(self, channelId, followUp, totalBumpCount, bumpInterval):
@@ -11,12 +12,13 @@ class BumpData:
 
         self.currentBumpCount = 0
         self.totalBumpCount = totalBumpCount
-        self.bumpStartTime = datetime.now()
+        self.lastBumpTime = datetime.datetime.now()
 
         self.bumpInterval = bumpInterval * 60
 
     async def Bump(self):
-        await self.followUp.send("Bump!")
+        unix = int(time.mktime((datetime.datetime.now() + datetime.timedelta(minutes = self.bumpInterval)).timetuple()))
+        await self.followUp.send(f"Bump! Next bump <t:{unix}:R>.")
 
 class Client(commands.Bot):
     async def on_ready(self):
@@ -44,10 +46,10 @@ async def send_periodic_message():
         if bumpData.currentBumpCount >= bumpData.totalBumpCount:
             continue
 
-        if (datetime.now() - bumpData.bumpStartTime).total_seconds() >= bumpData.bumpInterval:
+        if (datetime.datetime.now() - bumpData.lastBumpTime).total_seconds() >= bumpData.bumpInterval:
             await bumpData.Bump()
             bumpData.currentBumpCount += 1
-            bumpData.bumpStartTime = datetime.now()
+            bumpData.lastBumpTime = datetime.datetime.now()
 
             if bumpData.currentBumpCount >= bumpData.totalBumpCount:
                 channelsToRemove.append(channelId)
@@ -108,7 +110,8 @@ async def registerPostBump(interaction, bumpcount: str = None, bumpinterval: str
         totalBumpCount = bumpcount,
         bumpInterval = bumpinterval
     )
-    await followUp.send("Starting bumping!")
+    unix = int(time.mktime((datetime.datetime.now() + datetime.timedelta(minutes = bumpinterval)).timetuple()))
+    await followUp.send(f"Starting bumping! Next bump <t:{unix}:R>.")
 
 @client.tree.command(name='bumpy', description="Bumps your post every hour.")
 @app_commands.describe(bumpcount="The number of times your post is bumped. Default is 8. Maximum is 24.")
@@ -116,6 +119,17 @@ async def registerPostBump(interaction, bumpcount: str = None, bumpinterval: str
 @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
 async def registerPostBumpy(interaction, bumpcount: str = None, bumpinterval: str = None):
     await registerPostBump.callback(interaction, bumpcount, bumpinterval)
+
+@client.tree.command(name='stopbump', description="Stops bumping the current post.")
+@app_commands.allowed_installs(guilds=False, users=True)
+@app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
+async def stopBumping(interaction):
+    if interaction.channel_id not in followUpList:
+        await interaction.response.send_message(f"This channel is not being bumped.", ephemeral=True)
+        return
+
+    del followUpList[interaction.channel_id]
+    await interaction.response.send_message(f"Stopped bumping.")
 
 with open('BotToken') as file:
     client.run(file.read().strip())
